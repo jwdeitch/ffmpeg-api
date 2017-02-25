@@ -2,6 +2,7 @@
 #include <kore/http.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <pthread.h>
 #include "assets.h"
 
 
@@ -143,7 +144,9 @@ upload(struct http_request *req) {
 	char *ptr;
 	ptr = realpath(symlinkpath, actualpath);
 
-	transcode_video(ptr);
+	pthread_t tid;
+	pthread_create(&tid, NULL, transcode_video, ptr);
+
 	return (KORE_RESULT_OK);
 }
 

@@ -8,3 +8,5 @@ dh2048.pem
 cmake-build-debug
 tmp_files
 *.mp4
+*.ogv
+*.avi

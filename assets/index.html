@@ -1,6 +1,10 @@
 <!DOCTYPE>
 <html>
 <head>
+    <script
+            src="https://code.jquery.com/jquery-3.1.1.min.js"
+            integrity="sha256-hVVnYaiADRTO2PzUGmuLJr8BLUSjGIZsDYGmIJLv2b8="
+            crossorigin="anonymous"></script>
     <script>
         var socket = null;
         var sent = 0;
@@ -15,13 +19,9 @@
             sent = sent + 1;
             update();
         }
-        function update() {
-            var cnt = document.getElementById("counter");
-            cnt.innerHTML = "Recv: " + recv + " Sent: " + sent;
-        }
         function onmessage(evt) {
-            recv = recv + 1;
-            update();
+            var cnt = document.getElementById("counter");
+            cnt.innerHTML = evt;
         }
         function connect() {
             socket = new WebSocket("wss://127.0.0.1:8888/connect");
@@ -38,23 +38,50 @@
                 alert("onerror");
             };
         }
+        connect();
+
+        $(document).ready(function () {
+            // http://stackoverflow.com/a/5976031/4603498
+            $('#fileUpload').submit(function (e) {
+                e.preventDefault();
+                var data = new FormData();
+                jQuery.each(jQuery('#file')[0].files, function(i, file) {
+                    data.append('file', file);
+                });
+                $.ajax({
+                    url: 'https://127.0.0.1:8888/upload',
+                    type: 'POST',
+                    data: data,
+                    cache: false,
+                    contentType: false,
+                    processData: false,
+                    success: function () {
+                        $('#uploaded').html("Uploaded")
+                    }
+                });
+            });
+        });
+
     </script>
 </head>
 
 <body>
 
-<form action="/" onsubmit="connect(); return false;">
-    <input type="submit" value="connect">
-</form>
+<!--<form action="/" onsubmit="connect(); return false;">-->
+<!--<input type="submit" value="connect">-->
+<!--</form>-->
 
-<form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data">
+<form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data" id="fileUpload">
     <label for="file">Filename:</label>
-    <input type="file" name="file" id="file" />
-    <input type="submit" name="submit" value="Submit" />
+    <input type="file" name="file" id="file"/>
+    <input type="submit" name="submit" value="Submit"/>
 </form>
 
+<div id="uploaded">
 
+</div>
 <div id="counter">
+
 </div>
 
 </body>
