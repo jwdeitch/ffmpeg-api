@@ -9,8 +9,13 @@
 /*
  * Handles uploading, and transcoding of assets
  * Will broadcast transcoding progress over websocket
+ *
+ * pv is required for google cloud functions.
+ * It is compiled against amd64 linux
+ *
+ * Most of this is from the kore.io framework,
+ *
  */
-
 
 int page(struct http_request *);
 int page_ws_connect(struct http_request *);
