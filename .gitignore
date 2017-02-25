@@ -1,0 +1,8 @@
+*.o
+.flavor
+.objs
+ffmpeg-api.so
+assets.h
+cert
+dh2048.pem
+cmake-build-debug
