@@ -4,35 +4,39 @@
 #include <unistd.h>
 #include "assets.h"
 
-// pv RAW-VIDEO-INPUT-UNTOUCHED.mp4 --numeric | ffmpeg -i pipe:0 -v warning test234241.mp4
+
+/*
+ * Handles uploading, and transcoding of assets
+ *
+ *
+ * Most of this is from the Kore.io framework
+ */
+
+
 int page(struct http_request *);
 int page_ws_connect(struct http_request *);
 
 void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
-void websocket_message(struct connection *,
-					   u_int8_t, void *, size_t);
-
+void transcode_video();
+char *removeExtension(char *mystr);
 
 int upload(struct http_request *req);
 
 /* Websocket callbacks. */
 struct kore_wscbs wscbs = {
 		websocket_connect,
-		websocket_message,
 		websocket_disconnect
 };
+
+// Websocket Connection
+struct connection *c;
 
 /* Called whenever we get a new websocket connection. */
 void
 websocket_connect(struct connection *c) {
 	kore_log(LOG_NOTICE, "%p: connected", c);
-}
-
-void
-websocket_message(struct connection *c, u_int8_t op, void *data, size_t len) {
-	kore_log(LOG_NOTICE, "%p: received message", data);
-	kore_websocket_broadcast(c, op, data, len, WEBSOCKET_BROADCAST_GLOBAL);
+	c = c;
 }
 
 void
@@ -134,5 +138,67 @@ upload(struct http_request *req) {
 		ret = KORE_RESULT_OK;
 	}
 
+	char *symlinkpath = file->filename;
+	char actualpath[PATH_MAX + 1];
+	char *ptr;
+	ptr = realpath(symlinkpath, actualpath);
+
+	transcode_video(ptr);
 	return (KORE_RESULT_OK);
+}
+
+// pv inputfilepath--numeric | ffmpeg -i pipe:0 -v warning outputfilepath
+void transcode_video(const char *fpath) {
+	int buf_size = 256;
+
+	char *newFileName[10000];
+	strcpy(newFileName, removeExtension(fpath));
+	strcat(newFileName, ".mp4");
+
+	char *cmd[10000];
+	strcpy(cmd, "pv ");
+	strcat(cmd, fpath);
+	strcat(cmd, " --numeric | ffmpeg -i pipe:0 -v warning ");
+	strcat(cmd, newFileName);
+
+	kore_log(LOG_WARNING, "transcoding instruction: (%s)", cmd);
+
+	if (strcmp(fpath, newFileName) == 0) {
+		kore_log(LOG_WARNING, "Skipping job - file extensions are the same");
+		kore_websocket_broadcast(c, 1, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
+		return;
+	}
+
+
+	char buf[buf_size];
+	FILE *fp;
+
+
+	if ((fp = popen(cmd, "r")) == NULL) {
+		kore_log(LOG_NOTICE, "Error opening pipe!\n");
+	}
+
+	while (fgets(buf, buf_size, fp) != NULL) {
+		kore_websocket_broadcast(c, 1, buf, sizeof(buf), WEBSOCKET_BROADCAST_GLOBAL);
+		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
+	}
+
+	if (pclose(fp)) {
+		kore_log(LOG_NOTICE, "Command not found or exited with error status\n");
+	}
+}
+
+// http://stackoverflow.com/a/2736841/4603498
+char *removeExtension(char *mystr) {
+	char *retstr;
+	char *lastdot;
+	if (mystr == NULL)
+		return NULL;
+	if ((retstr = malloc(strlen(mystr) + 1)) == NULL)
+		return NULL;
+	strcpy(retstr, mystr);
+	lastdot = strrchr(retstr, '.');
+	if (lastdot != NULL)
+		*lastdot = '\0';
+	return retstr;
 }
