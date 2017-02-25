@@ -8,9 +8,7 @@
 
 /*
  * Handles uploading, and transcoding of assets
- *
- *
- * Most of this is from the Kore.io framework
+ * Will broadcast transcoding progress over websocket
  */
 
 
@@ -150,7 +148,6 @@ upload(struct http_request *req) {
 	return (KORE_RESULT_OK);
 }
 
-// pv inputfilepath--numeric | ffmpeg -i pipe:0 -v warning outputfilepath
 void transcode_video(const char *fpath) {
 	int buf_size = 256;
 
@@ -159,30 +156,32 @@ void transcode_video(const char *fpath) {
 	strcat(newFileName, ".mp4");
 
 	char *cmd[10000];
-	strcpy(cmd, "pv ");
+	strcpy(cmd, "(pv ");
 	strcat(cmd, fpath);
 	strcat(cmd, " --numeric | ffmpeg -i pipe:0 -v warning ");
 	strcat(cmd, newFileName);
+	strcat(cmd, ") 2>&1");
 
 	kore_log(LOG_WARNING, "transcoding instruction: (%s)", cmd);
 
 	if (strcmp(fpath, newFileName) == 0) {
 		kore_log(LOG_WARNING, "Skipping job - file extensions are the same");
-		kore_websocket_broadcast(c, 1, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
+		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
 		return;
 	}
 
-
 	char buf[buf_size];
 	FILE *fp;
-
 
 	if ((fp = popen(cmd, "r")) == NULL) {
 		kore_log(LOG_NOTICE, "Error opening pipe!\n");
 	}
 
 	while (fgets(buf, buf_size, fp) != NULL) {
-		kore_websocket_broadcast(c, 1, buf, sizeof(buf), WEBSOCKET_BROADCAST_GLOBAL);
+		char sbuf[15];
+		sprintf(sbuf, "%s", buf);
+
+		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_GLOBAL);
 		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 	}
 

@@ -21,7 +21,7 @@
         }
         function onmessage(evt) {
             var cnt = document.getElementById("counter");
-            cnt.innerHTML = evt;
+            cnt.innerHTML = evt.data;
         }
         function connect() {
             socket = new WebSocket("wss://127.0.0.1:8888/connect");
@@ -35,7 +35,7 @@
                 onmessage(evt)
             };
             socket.onerror = function (evt) {
-                alert("onerror");
+                console.log(evt);
             };
         }
         connect();
