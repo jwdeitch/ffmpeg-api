@@ -4,7 +4,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include "assets.h"
-
+#include <stdlib.h>
 
 /*
  * Handles uploading, and transcoding of assets
@@ -24,7 +24,8 @@ void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
 void transcode_video();
 char *removeExtension(char *mystr);
-
+void rand_str(char *dest, size_t length);
+void uploadToS3(const char *tfname);
 int upload(struct http_request *req);
 
 /* Websocket callbacks. */
@@ -185,8 +186,53 @@ void transcode_video(const char *fpath) {
 	while (fgets(buf, buf_size, fp) != NULL) {
 		char sbuf[15];
 		sprintf(sbuf, "%s", buf);
-
 		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_GLOBAL);
+		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
+		if (buf == 100) {
+			sleep(1); // we need to allow ffmpeg to release the file handle before uploading to s3
+			void uploadToS3(const char *tfname);
+		}
+	}
+
+	if (pclose(fp)) {
+		kore_log(LOG_NOTICE, "Command not found or exited with error status\n");
+	}
+}
+
+void uploadToS3(const char *tfname) {
+	char *symlinkpath = tfname;
+	char actualpath[PATH_MAX + 1];
+	char *ptr;
+	ptr = realpath(symlinkpath, actualpath);
+
+	char* prefix;
+	rand_str(prefix, 5);
+
+	char* newFileName[1000];
+	strcpy(cmd, prefix);
+	strcat(cmd, "/");
+	strcat(cmd, ptr);
+
+	char *cmd[10000];
+	strcpy(cmd, "./moveToS3.sh ");
+	strcat(cmd, newFileName);
+
+	kore_log(LOG_WARNING, "upload instruction: (%s)", cmd);
+
+	char buf[buf_size];
+	FILE *fp;
+
+	if ((fp = popen(cmd, "r")) == NULL) {
+		kore_log(LOG_NOTICE, "Error opening pipe!\n");
+	}
+
+	while (fgets(buf, buf_size, fp) != NULL) {
+		if (buf != 200) {
+			kore_log(LOG_ERR, "CURL ERROR UPLOAD TO S3: %s", buf);
+			return;
+		}
+
+		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, newFileName, sizeof(newFileName), WEBSOCKET_BROADCAST_GLOBAL);
 		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 	}
 
@@ -208,4 +254,17 @@ char *removeExtension(char *mystr) {
 	if (lastdot != NULL)
 		*lastdot = '\0';
 	return retstr;
+}
+
+// http://stackoverflow.com/a/15768317/4603498
+void rand_str(char *dest, size_t length) {
+	char charset[] = "0123456789"
+			"abcdefghijklmnopqrstuvwxyz"
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+	while (length-- > 0) {
+		size_t index = (double) rand() / RAND_MAX * (sizeof charset - 1);
+		*dest++ = charset[index];
+	}
+	*dest = '\0';
 }
