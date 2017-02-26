@@ -21,7 +21,13 @@
         }
         function onmessage(evt) {
             var cnt = document.getElementById("counter");
-            cnt.innerHTML = evt.data;
+            if (evt.data.toString() == "100") {
+                cnt.innerHTML = "finalizing";
+            } else if (evt.data.toString() == "test") {
+
+            } else {
+                cnt.innerHTML = evt.data;
+            }
         }
         function connect() {
             socket = new WebSocket("wss://127.0.0.1:8888/connect");
@@ -45,7 +51,7 @@
             $('#fileUpload').submit(function (e) {
                 e.preventDefault();
                 var data = new FormData();
-                jQuery.each(jQuery('#file')[0].files, function(i, file) {
+                jQuery.each(jQuery('#file')[0].files, function (i, file) {
                     data.append('file', file);
                 });
                 $.ajax({

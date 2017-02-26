@@ -5,6 +5,8 @@
 #include <pthread.h>
 #include "assets.h"
 #include <stdlib.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 /*
  * Handles uploading, and transcoding of assets
@@ -17,6 +19,11 @@
  *
  */
 
+struct ffmpeg_params {
+	char *output;
+	char *input;
+};
+
 int page(struct http_request *);
 int page_ws_connect(struct http_request *);
 
@@ -24,9 +31,9 @@ void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
 void transcode_video();
 char *removeExtension(char *mystr);
-void rand_str(char *dest, size_t length);
 void uploadToS3(const char *tfname);
 int upload(struct http_request *req);
+void rand_str(char *dest, size_t length);
 
 /* Websocket callbacks. */
 struct kore_wscbs wscbs = {
@@ -67,6 +74,9 @@ page_ws_connect(struct http_request *req) {
 
 int
 upload(struct http_request *req) {
+//	uploadToS3("wefwef.mp4");
+//	return 1;
+
 	int fd;
 	struct http_file *file;
 	u_int8_t buf[BUFSIZ];
@@ -143,38 +153,69 @@ upload(struct http_request *req) {
 		ret = KORE_RESULT_OK;
 	}
 
+	/*
+	 * I am producing the input and output file
+	 * paths to ffmpeg below. The output file path should be
+	 * prefixed with a random dir name to avoid collisions with
+	 * other uploads. This will also allow upload to S3 w/o changing the file name
+	 */
+
+	char *prefix[6];
+	rand_str(prefix, 5);
+
+	char *cwd[1024];
+	getcwd(cwd, sizeof(cwd));
+
+	char *outputFilePath[1000];
+	strcpy(outputFilePath, cwd);
+	strcat(outputFilePath, "/");
+	strcat(outputFilePath, prefix);
+	strcat(outputFilePath, "/");
+
+	char *outputFileName[1000];
+	strcpy(outputFileName, outputFilePath);
+	strcat(outputFileName, removeExtension(file->filename));
+	strcat(outputFileName, ".mp4");
+
+	struct stat st = {0};
+
+	if (stat(outputFilePath, &st) == -1) {
+		mkdir(outputFilePath, 0700);
+	}
+
 	char *symlinkpath = file->filename;
 	char actualpath[PATH_MAX + 1];
 	char *ptr;
 	ptr = realpath(symlinkpath, actualpath);
 
+	struct ffmpeg_params *t_params;
+	t_params = malloc(sizeof(*t_params));
+	t_params->output = outputFileName;
+	t_params->input = ptr;
+
 	pthread_t tid;
-	pthread_create(&tid, NULL, transcode_video, ptr);
+	pthread_create(&tid, NULL, transcode_video, t_params);
 
 	return (KORE_RESULT_OK);
 }
 
-void transcode_video(const char *fpath) {
+void transcode_video(struct ffmpeg_params *params) {
 	int buf_size = 256;
-
-	char *newFileName[10000];
-	strcpy(newFileName, removeExtension(fpath));
-	strcat(newFileName, ".mp4");
 
 	char *cmd[10000];
 	strcpy(cmd, "(pv ");
-	strcat(cmd, fpath);
+	strcat(cmd, params->input);
 	strcat(cmd, " --numeric | ffmpeg -i pipe:0 -v warning ");
-	strcat(cmd, newFileName);
+	strcat(cmd, params->output);
 	strcat(cmd, ") 2>&1");
 
 	kore_log(LOG_WARNING, "transcoding instruction: (%s)", cmd);
 
-	if (strcmp(fpath, newFileName) == 0) {
-		kore_log(LOG_WARNING, "Skipping job - file extensions are the same");
-		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
-		return;
-	}
+//	if (strcmp(fpath, newFileName) == 0) {
+//		kore_log(LOG_WARNING, "Skipping job - file extensions are the same");
+//		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
+//		return;
+//	}
 
 	char buf[buf_size];
 	FILE *fp;
@@ -186,11 +227,14 @@ void transcode_video(const char *fpath) {
 	while (fgets(buf, buf_size, fp) != NULL) {
 		char sbuf[15];
 		sprintf(sbuf, "%s", buf);
+
 		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_GLOBAL);
-		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
-		if (buf == 100) {
+		kore_log(LOG_NOTICE, "output: %s", sbuf);
+
+		if (strcmp(sbuf, "100\n") == 0) {
 			sleep(1); // we need to allow ffmpeg to release the file handle before uploading to s3
-			void uploadToS3(const char *tfname);
+			kore_log(LOG_NOTICE, "HELLO");
+			uploadToS3(params->output);
 		}
 	}
 
@@ -200,18 +244,6 @@ void transcode_video(const char *fpath) {
 }
 
 void uploadToS3(const char *tfname) {
-	char *symlinkpath = tfname;
-	char actualpath[PATH_MAX + 1];
-	char *ptr;
-	ptr = realpath(symlinkpath, actualpath);
-
-	char* prefix;
-	rand_str(prefix, 5);
-
-	char* newFileName[1000];
-	strcpy(cmd, prefix);
-	strcat(cmd, "/");
-	strcat(cmd, ptr);
 
 	char *cmd[10000];
 	strcpy(cmd, "./moveToS3.sh ");
@@ -227,13 +259,16 @@ void uploadToS3(const char *tfname) {
 	}
 
 	while (fgets(buf, buf_size, fp) != NULL) {
-		if (buf != 200) {
+		char sbuf[15];
+		sprintf(sbuf, "%s", buf);
+		if (strcmp(sbuf, "200"n)) {
+			kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, newFileName, sizeof(newFileName),
+									 WEBSOCKET_BROADCAST_GLOBAL);
+			kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
+		} else {
 			kore_log(LOG_ERR, "CURL ERROR UPLOAD TO S3: %s", buf);
 			return;
 		}
-
-		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, newFileName, sizeof(newFileName), WEBSOCKET_BROADCAST_GLOBAL);
-		kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 	}
 
 	if (pclose(fp)) {
