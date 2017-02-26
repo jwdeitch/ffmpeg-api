@@ -7,18 +7,7 @@
             crossorigin="anonymous"></script>
     <script>
         var socket = null;
-        var sent = 0;
-        var recv = 0;
-        var length = 65536;
 
-        function open(evt) {
-            trackMouse();
-        }
-        function message(msg) {
-            socket.send(msg);
-            sent = sent + 1;
-            update();
-        }
         function onmessage(evt) {
             var cnt = document.getElementById("counter");
             if (evt.data.toString() == "100") {
@@ -29,10 +18,11 @@
                 cnt.innerHTML = evt.data;
             }
         }
+
         function connect() {
             socket = new WebSocket("wss://127.0.0.1:8888/connect");
             socket.onopen = function (evt) {
-                open(evt)
+                console.log('WS OPENED');
             };
             socket.onclose = function (evt) {
                 alert("closed");
@@ -71,15 +61,15 @@
     </script>
 </head>
 <body>
-    <form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data" id="fileUpload">
-        <label for="file">Filename:</label>
-        <input type="file" name="file" id="file"/>
-        <input type="submit" name="submit" value="Submit"/>
-    </form>
+<form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data" id="fileUpload">
+    <label for="file">Filename:</label>
+    <input type="file" name="file" id="file"/>
+    <input type="submit" name="submit" value="Submit"/>
+</form>
 
-    <div id="uploaded">
-    </div>
-    <div id="counter">
-    </div>
+<div id="uploaded">
+</div>
+<div id="counter">
+</div>
 </body>
 </html>

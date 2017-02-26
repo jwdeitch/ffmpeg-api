@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <semaphore.h>
 
 /*
  * Handles uploading, and transcoding of assets
@@ -24,10 +25,13 @@ struct ffmpeg_params {
 	char input[1000];
 	char rnd_str[6];
 	char output_fn[1000];
+	struct connection lc;
 };
 
 int page(struct http_request *);
 int page_ws_connect(struct http_request *);
+
+sem_t mutex;
 
 void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
@@ -76,9 +80,6 @@ page_ws_connect(struct http_request *req) {
 
 int
 upload(struct http_request *req) {
-//	uploadToS3("wefwef.mp4");
-//	return 1;
-
 	int fd;
 	struct http_file *file;
 	u_int8_t buf[BUFSIZ];
@@ -201,12 +202,21 @@ upload(struct http_request *req) {
 	strcpy(t_params->input, ptr);
 
 	pthread_t tid;
+
+	sem_init(&mutex, 0, 1);
+
 	pthread_create(&tid, NULL, transcode_video, t_params);
 
 	return (KORE_RESULT_OK);
 }
 
 void transcode_video(struct ffmpeg_params *params) {
+	sem_wait(&mutex);
+
+	params->lc = *(struct connection*)malloc(sizeof(struct connection));
+
+	memcpy(&params->lc, c, sizeof(struct connection));
+
 	int buf_size = 256;
 
 	char *cmd[10000];
@@ -229,17 +239,19 @@ void transcode_video(struct ffmpeg_params *params) {
 		char sbuf[15];
 		sprintf(sbuf, "%s", buf);
 
-		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_GLOBAL);
+		kore_websocket_broadcast(&params->lc, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_LOCAL);
 		kore_log(LOG_NOTICE, "output: %s", sbuf);
 
 		if (strcmp(sbuf, "100\n") == 0) {
 			sleep(1); // we need to allow ffmpeg to release the file handle before uploading to s3
+			sem_post(&mutex);
 			uploadToS3(params);
 		}
 	}
 
 	if (pclose(fp)) {
 		kore_log(LOG_NOTICE, "Command not found or exited with error status\n");
+		sem_post(&mutex);
 	}
 }
 
@@ -274,7 +286,7 @@ void uploadToS3(struct ffmpeg_params *params) {
 		if (strcmp(sbuf, "200")) {
 
 			kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, spath, sizeof(spath),
-									 WEBSOCKET_BROADCAST_GLOBAL);
+									 WEBSOCKET_BROADCAST_LOCAL);
 			kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 		} else {
 			kore_log(LOG_ERR, "CURL ERROR UPLOAD TO S3: %s", buf);
@@ -304,7 +316,7 @@ char *removeExtension(char *mystr) {
 
 // http://stackoverflow.com/a/15768317/4603498
 void rand_str(char *dest, size_t length) {
-	srand ( time(NULL) );
+	srand(time(NULL));
 	char charset[] = "0123456789"
 			"abcdefghijklmnopqrstuvwxyz"
 			"ABCDEFGHIJKLMNOPQRSTUVWXYZ";
