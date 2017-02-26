@@ -25,7 +25,7 @@ struct ffmpeg_params {
 	char input[1000];
 	char rnd_str[6];
 	char output_fn[1000];
-	struct connection lc;
+	struct connection *lc; // local connection contains the connection for a distinct upload (thread)
 };
 
 int page(struct http_request *);
@@ -203,7 +203,7 @@ upload(struct http_request *req) {
 
 	pthread_t tid;
 
-	sem_init(&mutex, 0, 1);
+	sem_init(&mutex, 0, 2);
 
 	pthread_create(&tid, NULL, transcode_video, t_params);
 
@@ -213,9 +213,7 @@ upload(struct http_request *req) {
 void transcode_video(struct ffmpeg_params *params) {
 	sem_wait(&mutex);
 
-	params->lc = *(struct connection*)malloc(sizeof(struct connection));
-
-	memcpy(&params->lc, c, sizeof(struct connection));
+	memcpy(params->lc, c, sizeof(struct connection));
 
 	int buf_size = 256;
 
@@ -239,7 +237,7 @@ void transcode_video(struct ffmpeg_params *params) {
 		char sbuf[15];
 		sprintf(sbuf, "%s", buf);
 
-		kore_websocket_broadcast(&params->lc, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_LOCAL);
+		kore_websocket_broadcast(params->lc, WEBSOCKET_OP_TEXT, sbuf, sizeof(sbuf), WEBSOCKET_BROADCAST_LOCAL);
 		kore_log(LOG_NOTICE, "output: %s", sbuf);
 
 		if (strcmp(sbuf, "100\n") == 0) {
@@ -285,7 +283,7 @@ void uploadToS3(struct ffmpeg_params *params) {
 
 		if (strcmp(sbuf, "200")) {
 
-			kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, spath, sizeof(spath),
+			kore_websocket_broadcast(params->lc, WEBSOCKET_OP_TEXT, spath, sizeof(spath),
 									 WEBSOCKET_BROADCAST_LOCAL);
 			kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 		} else {
