@@ -70,25 +70,16 @@
 
     </script>
 </head>
-
 <body>
+    <form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data" id="fileUpload">
+        <label for="file">Filename:</label>
+        <input type="file" name="file" id="file"/>
+        <input type="submit" name="submit" value="Submit"/>
+    </form>
 
-<!--<form action="/" onsubmit="connect(); return false;">-->
-<!--<input type="submit" value="connect">-->
-<!--</form>-->
-
-<form action="https://127.0.0.1:8888/upload" method="post" enctype="multipart/form-data" id="fileUpload">
-    <label for="file">Filename:</label>
-    <input type="file" name="file" id="file"/>
-    <input type="submit" name="submit" value="Submit"/>
-</form>
-
-<div id="uploaded">
-
-</div>
-<div id="counter">
-
-</div>
-
+    <div id="uploaded">
+    </div>
+    <div id="counter">
+    </div>
 </body>
 </html>

@@ -15,13 +15,15 @@
  * pv is required for google cloud functions.
  * It is compiled against amd64 linux
  *
- * Most of this is from the kore.io framework,
+ * kore.io
  *
  */
 
 struct ffmpeg_params {
-	char *output;
-	char *input;
+	char output[1000];
+	char input[1000];
+	char rnd_str[6];
+	char output_fn[1000];
 };
 
 int page(struct http_request *);
@@ -31,7 +33,7 @@ void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
 void transcode_video();
 char *removeExtension(char *mystr);
-void uploadToS3(const char *tfname);
+void uploadToS3(struct ffmpeg_params *params);
 int upload(struct http_request *req);
 void rand_str(char *dest, size_t length);
 
@@ -173,9 +175,12 @@ upload(struct http_request *req) {
 	strcat(outputFilePath, "/");
 
 	char *outputFileName[1000];
-	strcpy(outputFileName, outputFilePath);
 	strcat(outputFileName, removeExtension(file->filename));
 	strcat(outputFileName, ".mp4");
+
+	char *outputFileFull[1000];
+	strcpy(outputFileFull, outputFilePath);
+	strcat(outputFileFull, outputFileName);
 
 	struct stat st = {0};
 
@@ -190,8 +195,10 @@ upload(struct http_request *req) {
 
 	struct ffmpeg_params *t_params;
 	t_params = malloc(sizeof(*t_params));
-	t_params->output = outputFileName;
-	t_params->input = ptr;
+	strcpy(t_params->output, outputFileFull);
+	strcpy(t_params->rnd_str, prefix);
+	strcpy(t_params->output_fn, outputFileName);
+	strcpy(t_params->input, ptr);
 
 	pthread_t tid;
 	pthread_create(&tid, NULL, transcode_video, t_params);
@@ -211,12 +218,6 @@ void transcode_video(struct ffmpeg_params *params) {
 
 	kore_log(LOG_WARNING, "transcoding instruction: (%s)", cmd);
 
-//	if (strcmp(fpath, newFileName) == 0) {
-//		kore_log(LOG_WARNING, "Skipping job - file extensions are the same");
-//		kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, 100, sizeof(100), WEBSOCKET_BROADCAST_GLOBAL);
-//		return;
-//	}
-
 	char buf[buf_size];
 	FILE *fp;
 
@@ -233,8 +234,7 @@ void transcode_video(struct ffmpeg_params *params) {
 
 		if (strcmp(sbuf, "100\n") == 0) {
 			sleep(1); // we need to allow ffmpeg to release the file handle before uploading to s3
-			kore_log(LOG_NOTICE, "HELLO");
-			uploadToS3(params->output);
+			uploadToS3(params);
 		}
 	}
 
@@ -243,11 +243,17 @@ void transcode_video(struct ffmpeg_params *params) {
 	}
 }
 
-void uploadToS3(const char *tfname) {
+void uploadToS3(struct ffmpeg_params *params) {
+	int buf_size = 256;
+
+	char *s3Path[1000];
+	strcpy(s3Path, params->rnd_str);
+	strcat(s3Path, "/");
+	strcat(s3Path, params->output_fn);
 
 	char *cmd[10000];
 	strcpy(cmd, "./moveToS3.sh ");
-	strcat(cmd, newFileName);
+	strcat(cmd, s3Path);
 
 	kore_log(LOG_WARNING, "upload instruction: (%s)", cmd);
 
@@ -261,8 +267,13 @@ void uploadToS3(const char *tfname) {
 	while (fgets(buf, buf_size, fp) != NULL) {
 		char sbuf[15];
 		sprintf(sbuf, "%s", buf);
-		if (strcmp(sbuf, "200"n)) {
-			kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, newFileName, sizeof(newFileName),
+
+		char spath[150];
+		sprintf(spath, "%s", s3Path);
+
+		if (strcmp(sbuf, "200")) {
+
+			kore_websocket_broadcast(c, WEBSOCKET_OP_TEXT, spath, sizeof(spath),
 									 WEBSOCKET_BROADCAST_GLOBAL);
 			kore_log(LOG_NOTICE, "OUTPUT: %s", buf);
 		} else {
@@ -293,6 +304,7 @@ char *removeExtension(char *mystr) {
 
 // http://stackoverflow.com/a/15768317/4603498
 void rand_str(char *dest, size_t length) {
+	srand ( time(NULL) );
 	char charset[] = "0123456789"
 			"abcdefghijklmnopqrstuvwxyz"
 			"ABCDEFGHIJKLMNOPQRSTUVWXYZ";

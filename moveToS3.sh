@@ -12,7 +12,7 @@ s3Key=$AWS_ACCESS_KEY_ID
 s3Secret=$AWS_SECRET_ACCESS_KEY
 
 signature=`echo -en ${stringToSign} | openssl sha1 -hmac ${s3Secret} -binary | base64`
-curl -X PUT --insecure -s -w "%{http_code}\\n" -T "${file}" \
+curl -X PUT -k -s -w "%{http_code}\\n" -T "${file}" \
  -H "Host: ${bucket}.s3.amazonaws.com" \
  -H "Date: ${dateValue}" \
  -H "Content-Type: ${contentType}" \
