@@ -31,7 +31,7 @@ struct ffmpeg_params {
 int page(struct http_request *);
 int page_ws_connect(struct http_request *);
 
-sem_t mutex;
+sem_t *mutex;
 
 void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
@@ -203,7 +203,13 @@ upload(struct http_request *req) {
 
 	pthread_t tid;
 
-	sem_init(&mutex, 0, 2);
+	if ((mutex = sem_open("/semaphore", O_CREAT|O_EXCL, 0644, 1)) == SEM_FAILED) {
+		kore_log(LOG_WARNING, "sem_open error (%i) -- %s", mutex, strerror(errno));
+	}
+	int sem_unlink_ret = sem_unlink("/semaphore");
+	if (sem_unlink_ret != 0) {
+		kore_log(LOG_WARNING, "sem_unlink_ret error (%i) -- %s", sem_unlink_ret, strerror(errno));
+	}
 
 	pthread_create(&tid, NULL, transcode_video, t_params);
 
@@ -211,7 +217,19 @@ upload(struct http_request *req) {
 }
 
 void transcode_video(struct ffmpeg_params *params) {
-	sem_wait(&mutex);
+	kore_log(LOG_WARNING, "waiting 0000 %s", strerror(errno));
+	int sem_wait_ret = sem_wait(mutex);
+
+	if (sem_wait_ret != 0) {
+		kore_log(LOG_WARNING, "sem_wait_ret error (%i) -- %s", sem_wait_ret, strerror(errno));
+	}
+
+	kore_log(LOG_WARNING, "waiting 1111 %s", strerror(errno));
+
+	for (;;) {
+		sleep(1);
+		kore_log(LOG_WARNING, "waiting ========= %s", strerror(errno));
+	}
 
 	memcpy(params->lc, c, sizeof(struct connection));
 
