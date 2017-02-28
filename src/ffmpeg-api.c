@@ -217,18 +217,14 @@ upload(struct http_request *req) {
 }
 
 void transcode_video(struct ffmpeg_params *params) {
-	kore_log(LOG_WARNING, "waiting 0000 %s", strerror(errno));
 	int sem_wait_ret = sem_wait(mutex);
-
 	if (sem_wait_ret != 0) {
 		kore_log(LOG_WARNING, "sem_wait_ret error (%i) -- %s", sem_wait_ret, strerror(errno));
 	}
 
-	kore_log(LOG_WARNING, "waiting 1111 %s", strerror(errno));
-
 	for (;;) {
-		sleep(1);
 		kore_log(LOG_WARNING, "waiting ========= %s", strerror(errno));
+		sleep(1);
 	}
 
 	memcpy(params->lc, c, sizeof(struct connection));
