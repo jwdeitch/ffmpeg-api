@@ -32,6 +32,7 @@ int page(struct http_request *);
 int page_ws_connect(struct http_request *);
 
 sem_t *mutex;
+int sem = 0;
 
 void websocket_connect(struct connection *);
 void websocket_disconnect(struct connection *);
@@ -217,15 +218,22 @@ upload(struct http_request *req) {
 }
 
 void transcode_video(struct ffmpeg_params *params) {
-	int sem_wait_ret = sem_wait(mutex);
-	if (sem_wait_ret != 0) {
-		kore_log(LOG_WARNING, "sem_wait_ret error (%i) -- %s", sem_wait_ret, strerror(errno));
-	}
+	sem++;
 
-	for (;;) {
-		kore_log(LOG_WARNING, "waiting ========= %s", strerror(errno));
+	while (sem > 1) {
+		kore_log(LOG_WARNING, "waiting ========= %i", sem);
 		sleep(1);
 	}
+
+//	int sem_wait_ret = sem_wait(mutex);
+//	if (sem_wait_ret != 0) {
+//		kore_log(LOG_WARNING, "sem_wait_ret error (%i) -- %s", sem_wait_ret, strerror(errno));
+//	}
+
+//	for (;;) {
+//		kore_log(LOG_WARNING, "waiting ========= %s", strerror(errno));
+//		sleep(1);
+//	}
 
 	memcpy(params->lc, c, sizeof(struct connection));
 
@@ -245,6 +253,8 @@ void transcode_video(struct ffmpeg_params *params) {
 
 	if ((fp = popen(cmd, "r")) == NULL) {
 		kore_log(LOG_NOTICE, "Error opening pipe!\n");
+		sem--;
+		exit(1);
 	}
 
 	while (fgets(buf, buf_size, fp) != NULL) {
@@ -256,14 +266,16 @@ void transcode_video(struct ffmpeg_params *params) {
 
 		if (strcmp(sbuf, "100\n") == 0) {
 			sleep(1); // we need to allow ffmpeg to release the file handle before uploading to s3
-			sem_post(&mutex);
+			sem--;
+//			sem_post(&mutex);
 			uploadToS3(params);
 		}
 	}
 
 	if (pclose(fp)) {
 		kore_log(LOG_NOTICE, "Command not found or exited with error status\n");
-		sem_post(&mutex);
+		sem--;
+//		sem_post(&mutex);
 	}
 }
 
