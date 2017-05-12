@@ -16,7 +16,7 @@
  * pv is required for google cloud functions.
  * It is compiled against amd64 linux
  *
- * kore.io
+ * Thanks to kore.io for the great web framework
  *
  */
 
